@@ -359,55 +359,43 @@ var l8toa = ee.ImageCollection('LANDSAT/LC08/C01/T1_RT_TOA')
 	.map(cloudMask);
 
 var l8toa_sel = l8toa.select('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'NDVI', 'EVI', 'SAVI', 'MSAVI', 'NDMI', 'NBR', 'NBR2', 'NDWI');
+//////////////////////////////////////////////////////////////////////////////////////////
 
 
-// SR collection
-var l5sr = ee.ImageCollection('LANDSAT/LC05/C01/T2_SR')
-	.filterBounds(region)
-	.filterDate(start_date, end_date)
-	.map(addNDVI5)
-	.map(addEVI5)
-	.map(addSAVI5)
-	.map(addMSAVI5)
-	.map(addNDMI5)
-	.map(addNBR5)
-	.map(addNBR25)
-	.map(addNDWI5)
-	.map(maskClouds);
-
-var l5sr_sel = l5sr.select('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'NDVI', 'EVI', 'SAVI', 'MSAVI', 'NDMI', 'NBR', 'NBR2', 'NDWI');
 
 
-var l7sr = ee.ImageCollection('LANDSAT/LC07/C01/T2_SR')
-	.filterBounds(region)
-	.filterDate(start_date, end_date)
-	.map(addNDVI5)
-	.map(addEVI5)
-	.map(addSAVI5)
-	.map(addMSAVI5)
-	.map(addNDMI5)
-	.map(addNBR5)
-	.map(addNBR25)
-	.map(addNDWI5)
-	.map(maskClouds);
+//////////////////////////////////////////////////////////////////////////////////////////
+// CONVERT THERMAL BANDS TO CELSIUS
 
-var l7sr_sel = l7sr.select('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'NDVI', 'EVI', 'SAVI', 'MSAVI', 'NDMI', 'NBR', 'NBR2', 'NDWI');
+var toCelsius_l5 = function(image){
+	var time = image.get('system:time_start');
+	var celsius = image.expression('(B6/(1+(10.8*B6/14388)*log((0.004*((ndvi-0.2)/0.3)+0.986))))-273',{'ndvi': image.select('NDVI'), 'B6': image.select('B6')})
+	.rename("celsius")
+	.set('system:time_start',time);
+	return celsius;
+};
 
+var temp_l5 = l5toa_sel.map(toCelsius_l5);
 
-var l8sr = ee.ImageCollection('LANDSAT/LC08/C01/T2_SR')
-	.filterBounds(region)
-	.filterDate(start_date, end_date)
-	.map(addNDVI8)
-	.map(addEVI8)
-	.map(addSAVI8)
-	.map(addMSAVI8)
-	.map(addNDMI8)
-	.map(addNBR8)
-	.map(addNBR28)
-	.map(addNDWI8)
-	.map(maskClouds);
+var toCelsius_l7 = function(image){
+	var time = image.get('system:time_start');
+	var celsius = image.expression('(B6/(1+(10.8*B6/14388)*log((0.004*((ndvi-0.2)/0.3)+0.986))))-273',{'ndvi': image.select('NDVI'), 'B6': image.select('B6_VCID_1')})
+	.rename("celsius")
+	.set('system:time_start',time);
+	return celsius;
+};
 
-var l8sr_sel = l8sr.select('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'NDVI', 'EVI', 'SAVI', 'MSAVI', 'NDMI', 'NBR', 'NBR2', 'NDWI');
+var temp_l7 = l7toa_sel.map(toCelsius_l7);
+
+var toCelsius_l8 = function(image){
+	var time = image.get('system:time_start');
+	var celsius = image.expression('(B10/(1+(10.8*B10/14388)*log((0.004*((ndvi-0.2)/0.3)+0.986))))-273',{'ndvi': image.select('NDVI'), 'B10': image.select('B10')})
+	.rename("celsius")
+	.set('system:time_start',time);
+	return celsius;
+};
+
+var temp_l8 = l8toa_sel.map(toCelsius_l8);
 //////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -418,11 +406,11 @@ var l8sr_sel = l8sr.select('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'NDV
 
 // Also worth seeing is this: https://developers.google.com/earth-engine/landsat
 
+var temp_median = temp_l8.median();
 
-var med = l8sr_sel.median();
+var visParams = {min: [0],max: [40]};
 
-var visParams8sr = {bands: ['B4', 'B3', 'B2'],min: [0,0,0],max: [3400, 2800, 1900]};
-Map.addLayer(med, visParams8sr, 'landsat 8 sr median');
+Map.addLayer(temp_median, visParams, 'surface temperature');
 
 
 // For generating simple composites; this might be better for TOA analyses.

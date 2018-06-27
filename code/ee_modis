@@ -1,0 +1,187 @@
+//////////////////////////////////////////////////////////////////////////////////////////
+// STUDY LOCATIONS
+var locations = [
+	ee.Feature(ee.Geometry.Polygon(
+		[[
+			[-52.89, -3.00],
+			[-52.89, -3.75],
+			[-52.14, -3.75],
+			[-52.14, -3.00]
+		]]), {name: 'altamira'}),
+	ee.Feature(ee.Geometry.Polygon(
+		[[
+			[-60.35, 0.50],
+			[-60.35, -0.25],
+			[-59.60, -0.25],
+			[-59.60, 0.50]
+		]]), {name: 'caroebe'}),
+	ee.Feature(ee.Geometry.Polygon(
+		[[
+			[-47.85, -1.00],
+			[-47.85, -1.75],
+			[-47.10, -1.75],
+			[-47.10, -1.00]
+		]]), {name: 'igarape-açu'}),
+	ee.Feature(ee.Geometry.Polygon(
+		[[
+			[-65.47, -7.20],
+			[-65.47, -7.95],
+			[-64.72, -7.95],
+			[-64.72, -7.20]
+		]]), {name: 'lábrea'}),
+	ee.Feature(ee.Geometry.Polygon(
+		[[
+			[-56.13, -12.98],
+			[-56.13, -13.73],
+			[-55.38, -13.73],
+			[-55.38, -12.98]
+		]]), {name: 'lucas do rio verde'}),
+	ee.Feature(ee.Geometry.Polygon(
+		[[
+			[-62.45, -9.24],
+			[-62.45, -9.99],
+			[-61.70, -9.99],
+			[-61.70, -9.24]
+		]]), {name: 'machadinho d-oeste'}),
+	ee.Feature(ee.Geometry.Polygon(
+		[[
+			[-60.43, -2.75],
+			[-60.43, -3.50],
+			[-59.68, -3.50],
+			[-59.68, -2.75]
+		]]), {name: 'manaus'}),
+	ee.Feature(ee.Geometry.Polygon(
+		[[
+			[-73.35, -3.94],
+			[-73.35, -4.69],
+			[-72.60, -4.69],
+			[-72.60, -3.94]
+		]]), {name: 'tamshiyacu'})
+];
+
+
+var amazon_basin = ee.Geometry.Polygon(
+	[[
+		[-79.80, 9.30],
+		[-79.80, -23.70],
+		[-44.80, -23.70],
+		[-44.80, 9.30]
+	]]
+);
+
+
+var region = ee.FeatureCollection(locations);
+//////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// DATE
+var start_date = '2017-01-01';
+var end_date = '2017-12-31';
+//////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// CONVERT FROM KELVIN TO DEGREES C
+var toCelsius = function(image){
+	var time = image.get('system:time_start');
+	var celsius = image.multiply(0.02) // Scale factor.
+	.subtract(273.15) // Convert from Kelvin to C.
+	.rename("celsius")
+	.set('system:time_start',time);
+	return celsius
+};
+//////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// MODIS IMAGE COLLECTION
+// https://explorer.earthengine.google.com/#detail/MODIS%2F006%2FMOD11A1
+
+var day =  ee.ImageCollection("MODIS/006/MOD11A1").filterDate(start_date, end_date)
+	.sort('system:time_start', false)
+	.filterBounds(region) 
+	.select("LST_Day_1km");
+
+var day_temp = day.map(toCelsius);
+
+var night =  ee.ImageCollection("MODIS/006/MOD11A1").filterDate(start_date, end_date)
+	.sort('system:time_start', false)
+	.filterBounds(region) 
+	.select("LST_Night_1km");
+ 
+ var night_temp = night.map(toCelsius);
+//////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// EXAMPLE OF TIME SERIES INFO FOR STUDY REGION CALCULATING THE MEDIAN TEMPERATURE OVER TIME
+var day_temp_time_median_region = day_temp.map(function(i) {
+	return i.select('celsius').reduceRegions({
+		collection: region, 
+		reducer: ee.Reducer.median(), 
+		scale: 1000
+	}).filter(ee.Filter.neq('median', null))
+	.map(function(f) { 
+		return f.set('system:time_start',null);
+	});
+}).flatten();
+
+// THIS EXPORTS IT TO A CSV TABLE
+Export.table.toDrive({
+	collection: day_temp_time_median_region.select(['.*'],null,false), 
+	description: 'modis_day_temp_time_median_region',
+	folder:"/gee-analyses",
+	fileFormat: 'CSV'
+});
+//////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// GENERATING AN OVERALL IMAGE OF LAND SURFACE TEMPERATURE
+var day_temp_calc = day_temp.reduce(ee.Reducer.median());
+
+Map.addLayer(day_temp_calc, 'temperature');
+
+// THIS EXPORTS IT AS A GEOTIF
+Export.image.toDrive({
+	image: day_temp_calc.clip(amazon),
+	description: 'day_temp_calc_median',
+	folder:"/gee-analyses",
+	scale: 1000,
+	region: amazon,
+	crs: 'EPSG:3857',
+	maxPixels:1e13
+});
+//////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// EXAMPLE OF CALCULATING MEDIAN TEMPERATURE DIFFERENCES BETWEEN TWO DATE PERIODS
+var day_temp_calc1 = day_temp.filterDate('2000-03-05', '2009-12-31').median();
+var day_temp_calc2 = day_temp.filterDate('2010-01-01', '2017-11-16').median();
+
+var day_temp_calc_diff = day_temp_calc2.subtract(day_temp_calc1);
+
+// THIS EXPORTS IT AS A GEOTIF
+Export.image.toDrive({
+	image: day_temp_calc_diff.clip(region),
+	description: 'day_temp_calc_diff',
+	folder:"/gee-analyses",
+	scale: 1000,
+	region: amazon,
+	crs: 'EPSG:3857',
+	maxPixels:1e13
+});
+//////////////////////////////////////////////////////////////////////////////////////////
